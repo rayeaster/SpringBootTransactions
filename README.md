@@ -1,0 +1,4 @@
+- use `mvn clean package -DskipTests=true` to build application jar
+- use `docker build . -t my-app:1.0.0` to build docker image
+- use `docker run -p 8080:8080 my-app:1.0.0` to run the application with docker
+- only use standard spring boot jars for REST api/unit/end-2-end stress testing as defined in `pom.xml`
