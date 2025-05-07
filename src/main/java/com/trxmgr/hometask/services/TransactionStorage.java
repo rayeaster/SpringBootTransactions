@@ -144,6 +144,7 @@ public class TransactionStorage implements Serializable {
 	private int search(long id) {
 		int targetIdx = searchPool.invoke(new TrxSearcher(trxList, id));
 //		System.out.println("storage index for given target[" + id + "] is " + targetIdx);
+		TrxSearcher.reset();
 		return targetIdx;
 	}
 
@@ -162,6 +163,7 @@ public class TransactionStorage implements Serializable {
 		private int start;
 		private int end;
 		private long target;
+		private static volatile int foundIdx = -1;
 
 		TrxSearcher(List<BankingTransaction> data, int start, int end, long target) {
 			this.all = data;
@@ -172,6 +174,10 @@ public class TransactionStorage implements Serializable {
 
 		TrxSearcher(List<BankingTransaction> data, long target) {
 			this(data, 0, data.size(), target);
+		}
+
+		static void reset() {
+			foundIdx = -1;
 		}
 
 		@Override
@@ -195,7 +201,8 @@ public class TransactionStorage implements Serializable {
 //			System.out.println(Thread.currentThread() + " computing from index " + start + " to " + end);
 
 			for (int i = start; i < end; i++) {
-				if (all.get(i).getId() == target) {
+				if (foundIdx < 0 && all.get(i).getId() == target) {
+					foundIdx = i;
 					return i;
 				}
 			}

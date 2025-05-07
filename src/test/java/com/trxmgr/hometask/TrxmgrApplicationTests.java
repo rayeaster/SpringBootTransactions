@@ -1,6 +1,16 @@
 package com.trxmgr.hometask;
 
-import org.junit.jupiter.api.AfterAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,22 +21,10 @@ import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 
 import com.trxmgr.hometask.entities.BankingTransaction;
 import com.trxmgr.hometask.entities.PageResponse;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.IntStream;
 
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 public class TrxmgrApplicationTests {
@@ -148,7 +146,7 @@ public class TrxmgrApplicationTests {
 		String getUrl = getUrl(newTrxs.get(0).getId());
 		response = restTemplate.getForEntity(getUrl, BankingTransaction.class);
 		assertEquals(HttpStatus.OK, response.getStatusCode());
-		
+
 		response = restTemplate.postForEntity(updateStatusUrl(getUrl, -1), null, BankingTransaction.class);
 		assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
 	}
@@ -277,6 +275,35 @@ public class TrxmgrApplicationTests {
 
 		assertEquals(successCount.get(), futures.length + deleteFutures.length);
 		assertEquals(errorCount.get(), 0);
+	}
+
+	@Test
+	public void testStress_BigVolumeAddDelete() throws Exception {
+		int addSize = r.nextInt(50000, 200000);
+		int deleteStep = addSize / 100;
+		List<BankingTransaction> newTrxs = createTrxList(addSize, 0, r);
+		List<BankingTransaction> toDeleteTrxs = new ArrayList<BankingTransaction>();
+		for (BankingTransaction trx : newTrxs) {
+			BankingTransaction added = restTemplate.postForObject(API_URL, trx, BankingTransaction.class);
+			if (added != null && (added.getId() % deleteStep) == 0) {
+				toDeleteTrxs.add(added);
+			}
+		}
+
+		AtomicInteger successCount = new AtomicInteger(0);
+		AtomicInteger errorCount = new AtomicInteger(0);
+
+		CompletableFuture<?>[] deleteFutures = IntStream.range(0, toDeleteTrxs.size())
+				.mapToObj(i -> CompletableFuture.runAsync(new DeleteRunnable(restTemplate,
+						getUrl(toDeleteTrxs.get(i).getId()), toDeleteTrxs.subList(i, i + 1), successCount, errorCount),
+						executor))
+				.toArray(CompletableFuture[]::new);
+
+		CompletableFuture.allOf(deleteFutures).join();
+
+		assertEquals(successCount.get(), deleteFutures.length);
+		assertEquals(errorCount.get(), 0);
+
 	}
 
 	///////////////////////////////////////////////////////////////////
